@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import sqlite3
+import json
+import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 
 from .models import Script
 
@@ -34,6 +36,8 @@ CREATE TABLE IF NOT EXISTS executions (
     completed_at TEXT,
     status TEXT,
     exit_code INTEGER,
+    stdout TEXT,
+    stderr TEXT,
     FOREIGN KEY (script_id) REFERENCES scripts(id)
 );
 """
@@ -120,4 +124,52 @@ class Database:
             created_at=parse_dt(row["created_at"]),
             updated_at=parse_dt(row["updated_at"]),
         )
+    
+    def create_execution(self, script_id: str) -> str:
+        """
+        Create an execution row and return execution_id.
+        """
+        assert self.conn is not None, "DB not connected"
+
+        execution_id = str(uuid.uuid4())
+        started_at = _now_iso()
+
+        self.conn.execute(
+            """
+            INSERT INTO executions (id, script_id, started_at, status)
+            VALUES (?, ?, ?, ?)
+            """,
+            (execution_id, script_id, started_at, "running"),
+        )
+        self.conn.commit()
+        return execution_id
+    
+    def complete_execution(
+        self, 
+        execution_id: str,
+        *,
+        exit_code: int,
+        stdout: str,
+        stderr: str,
+        status: str = "completed",
+    ) -> None:
+        assert self.conn is not None, "DB not connected"
+
+        completed_at = _now_iso()
+        self.conn.execute(
+            """
+            UPDATE executions
+            SET completed_at = ?, status = ?, exit_code = ?, stdout = ?, stderr = ?
+            WHERE id = ?
+            """,
+            (completed_at, status, exit_code, stdout, stderr, execution_id),
+        )
+        self.conn.commit()
+    
+    def get_execution(self, execution_id: str) -> Optional[sqlite3.Row]:
+        assert self.conn is not None, "DB not connected"
+        return self.conn.execute(
+            "SELECT * FROM executions WHERE id = ?",
+            (execution_id,),
+        ).fetchone()
 
