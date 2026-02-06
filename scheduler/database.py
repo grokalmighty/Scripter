@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+import uuid
+
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Optional
@@ -41,6 +43,22 @@ class Database:
                 enabled INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT,
                 updated_at TEXT);"""
+        )
+        self.conn.commit()
+
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS executions (
+                id TEXT PRIMARY KEY,
+                script_id TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                status TEXT NOT NULL,
+                exit_code INTEGER,
+                stdout TEXT,
+                stderr TEXT,
+                FOREIGN KEY (script_id) REFERENCES scripts(id));
+            """
         )
         self.conn.commit()
     
@@ -111,3 +129,58 @@ class Database:
         db = cls(str(db_path))
         db.connect()
         return db
+    
+    def create_execution(self, script_id: str) -> str:
+        assert self.conn is not None, "Call connect() first"
+
+        execution_id = str(uuid.uuid4())
+        started_at = _utcnow_iso()
+
+        self.conn.execute(
+            """
+            INSERT INTO executions (id, script_id, started_at, status)
+            VALUES (?, ?, ?, ?);
+            """,
+            (execution_id, script_id, started_at, "running"),
+        )
+        self.conn.commit()
+        return execution_id
+    
+    def complete_execution(
+         self,
+         execution_id: str,
+         *,
+         status: str,
+         exit_code: int | None = None,
+         stdout: str | None = None,
+         stderr: str | None = None,   
+    ) -> None:
+        assert self.conn is not None, "Call connect() first"
+
+        completed_at = _utcnow_iso()
+
+        self.conn.execute(
+            """
+            UPDATE executions
+            SET completed_at = ?,
+                status = ?,
+                exit_code = ?,
+                stdout = ?,
+                stderr = ?
+            WHERE id = ?;""",
+            (completed_at, status, exit_code, stdout, stderr, execution_id),
+        )
+        self.conn.commit()
+    
+    def get_last_execution_row(self, script_id: str):
+        assert self.conn is not None, "Call connect() first"
+
+        return self.conn.execute(
+            """
+            SELECT *
+            FROM executions
+            WHERE script_id = ?
+            ORDER BY started_at DESC
+            LIMIT 1;""",
+            (script_id,),
+        ).fetchone()
