@@ -30,7 +30,7 @@ def test_get_script_by_name():
     db.connect()
 
     db.add_script(Script(id="s1", name="hello", path="/tmp/hello.sh"))
-    retrieved = db.get_script_name("hello")
+    retrieved = db.get_script_by_name("hello")
 
     assert retrieved is not None
     assert retrieved.id == "s1"

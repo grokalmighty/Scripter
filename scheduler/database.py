@@ -96,7 +96,7 @@ class Database:
 
         return self._row_to_script(row) if row else None
 
-    def get_script_name(self, name: str) -> Optional[Script]:
+    def get_script_by_name(self, name: str) -> Optional[Script]:
         assert self.conn is not None, "Call connect() first"
 
         row = self.conn.execute(
