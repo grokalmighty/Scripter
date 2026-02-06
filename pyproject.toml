@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scripter"
+version = "0.1.0"
+
+dependencies = ["click"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+description = "Centralized script manager."
+authors = [
+    { name = "Jasmine DeGuzman", email = "jaramode68@duck.com" }
+]
