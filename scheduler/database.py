@@ -4,6 +4,7 @@ import sqlite3
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Optional
+from pathlib import Path
 
 from .models import Script
 
@@ -101,3 +102,12 @@ class Database:
             created_at=created_at,
             updated_at=updated_at,
         )
+    
+    @classmethod
+    def get_default(cls) -> "Database":
+        base_dir = Path.home() / ".scheduler"
+        base_dir.mkdir(parents=True, exist_ok=True)
+        db_path = base_dir / "scheduler.db"
+        db = cls(str(db_path))
+        db.connect()
+        return db
