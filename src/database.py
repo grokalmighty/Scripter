@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS RUNS (
     stderr TEXT,
     FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    script_id INTEGER NOT NULL,
+    interval_seconds INTEGER NOT NULL,
+    last_run TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
+);
 """
 
 class Database:
