@@ -3,6 +3,8 @@ from pathlib import Path
 
 from .database import Database
 from .scripts_repo import add_script, list_scripts, get_script
+from .schedules_repo import add_schedule
+from .scheduler import run_loop
 
 @click.group()
 def cli():
@@ -41,7 +43,7 @@ def script_list(db_path):
         click.echo(f"{s.id}\t{s.name}\t{s.command}")
 
 @script.command("show")
-@click.argument("script_id", type=int)
+@click.argument("script-id", type=int)
 @click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
 def script_show(script_id, db_path):
     db = Database(db_path)
@@ -54,3 +56,25 @@ def script_show(script_id, db_path):
     click.echo(f"cwd: {s.working_dir or ''}")
     click.echo(f"created_at: {s.created_at}")
     click.echo(f"updated_at: {s.updated_at}")
+
+@cli.command()
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--tick", "tick_seconds", type=int, default=2)
+def run(db_path, tick_seconds):
+    """Start the scheduler loop."""
+    click.echo(f"Starting scheduler (tick={tick_seconds}s)... Ctrl+C to stop.")
+    run_loop(db_path=db_path, tick_seconds=tick_seconds)
+
+@cli.group()
+def schedule():
+    """Manage schedules."""
+    pass
+
+@schedule.command("add")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--script-id", type=int, required=True)
+@click.option("--interval", "interval_seconds", type=int, required=True)
+def schedule_add(db_path, script_id, interval_seconds):
+    db = Database(db_path)
+    sid = add_schedule(db, script_id=script_id, interval_seconds=interval_seconds)
+    click.echo(f"Added schedule #{sid} for script {script_id} every {interval_seconds}s")
