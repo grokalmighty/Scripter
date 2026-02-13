@@ -8,6 +8,8 @@ from .scheduler import run_loop
 from .runs_repo import list_runs, get_run
 from .timefmt import to_local_display
 from .config_apply import apply_config
+from .file_triggers_repo import add_file_trigger, list_file_triggers, remove_file_trigger
+from .file_watcher import FileWatcher
 
 @click.group()
 def cli():
@@ -71,7 +73,10 @@ def schedule():
 @click.option("--once", is_flag=True, help="Run a single scheduler tick then exit.")
 def daemon(db_path, tick_seconds, once):
     """Start the scheduler loop."""
-    click.echo(f"Starting scheduler (tick={tick_seconds}s)... Ctrl+C to stop.")
+    if once:
+        click.echo(f"Running one tick...")
+    else:
+        click.echo(f"Starting scheduler (tick={tick_seconds}s)... Ctrl+C to stop.")
     run_loop(db_path=db_path, tick_seconds=tick_seconds, once=once)
 
 @schedule.command("add")
@@ -99,10 +104,10 @@ def runs_list(db_path, limit, script_id):
         click.echo("No runs found.")
         return 
     
-    click.echo("id\tscript\tstatus\texit\tstarted\t\t\tfinished")
+    click.echo("id\tscript\ttrigger\tstatus\texit\tstarted\t\t\tfinished")
     for r in rows:
         click.echo(
-            f"{r['id']}\t{r['script_id']}\t{r['status']}\t{r['exit_code']}\t"
+            f"{r['id']}\t{r['script_id']}\t{r["trigger"]}\t{r['status']}\t{r['exit_code']}\t"
             f"{to_local_display(r['started_at'])}\t{to_local_display(r['finished_at'])}"
         )
 
@@ -158,3 +163,52 @@ def config_apply(path, db_path):
     db = Database(db_path)
     apply_config(db, path)
     click.echo(f"Applied config: {path}")
+
+@cli.group()
+def trigger():
+    """Manage file triggers."""
+    pass
+
+@trigger.command("add-file")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--script-id", type=int, required=True)
+@click.option("--path", required=True)
+@click.option("--recursive", is_flag=True)
+def trigger_add_file(db_path, script_id, path, recursive):
+    db = Database(db_path)
+    tid = add_file_trigger(db, script_id=script_id, path=path, recursive=recursive)
+    click.echo(f"Added file trigger #{tid} watching {path}")
+
+@trigger.command("list")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def trigger_list(db_path):
+    db = Database(db_path)
+    rows = list_file_triggers(db)
+    if not rows:
+        click.echo("No file triggers.")
+        return
+    
+    click.echo("id\tscript\tpath\trecursive")
+    for r in rows:
+        click.echo(
+            f"{r['id']}\t{r['script_name']}\t{r['path']}\t{bool(r['recursive'])}"
+        )
+
+@trigger.command("debug-scan")
+@click.option("--path", required=True)
+@click.option("--recursive", is_flag=True)
+def trigger_debug_scan(path, recursive):
+    w = FileWatcher()
+    first = w.scan(path, recursive)
+    second = w.scan(path, recursive)
+    click.echo(f"first_scan_changed={first} second_scan_changed={second}")
+
+@trigger.command("remove")
+@click.argument("trigger_id", type=int)
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def trigger_remove(trigger_id, db_path):
+    db = Database(db_path)
+    n = remove_file_trigger(db, trigger_id)
+    if n == 0:
+        raise click.ClickException(f"Trigger {trigger_id} not found")
+    click.echo(f"Removed trigger {trigger_id}")

@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS scripts (
     updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS RUNS (
+CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     script_id INTEGER NOT NULL,
     status TEXT NOT NULL,              -- queued | running | success | failed
@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS RUNS (
     exit_code INTEGER,
     stdout TEXT,
     stderr TEXT,
+    trigger TEXT,
     FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
 );
 
@@ -35,6 +36,15 @@ CREATE TABLE IF NOT EXISTS schedules (
     script_id INTEGER NOT NULL,
     interval_seconds INTEGER NOT NULL,
     last_run TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS file_triggers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    script_id INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    recursive INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
 );
@@ -56,6 +66,7 @@ class Database:
         conn = self.connect()
         conn.executescript(SCHEMA)
         conn.commit()
+        self.migrate()
 
     def execute(self, sql: str, params: Iterable[Any] = ()) -> sqlite3.Cursor:
         conn = self.connect()
@@ -72,3 +83,11 @@ class Database:
         if self._conn is not None:
             self._conn.close()
             self._conn = None
+    
+    def migrate(self) -> None:
+        conn = self.connect()
+
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(runs)").fetchall()]
+        if "trigger" not in cols:
+            conn.execute("ALTER TABLE runs ADD COLUMN trigger TEXT")
+            conn.commit()

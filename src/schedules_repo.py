@@ -9,6 +9,7 @@ def _now():
 
 def add_schedule(db: Database, script_id: int, interval_seconds: int) -> int:
     db.init()
+    db.migrate()
     now = _now().isoformat()
     cur = db.execute(
         """
@@ -21,6 +22,7 @@ def add_schedule(db: Database, script_id: int, interval_seconds: int) -> int:
 
 def due_schedules(db: Database):
     db.init()
+    db.migrate()
     rows = db.query("SELECT * FROM schedules")
     due = []
     now = _now()
@@ -48,6 +50,7 @@ def mark_run(db: Database, schedule_id: int):
 
 def list_schedules(db: Database):
     db.init()
+    db.migrate()
     return db.query(
         """
         SELECT s.id, s.script_id, sc.name as script_name, s.interval_seconds, s.last_run, s.created_at

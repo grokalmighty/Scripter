@@ -7,14 +7,15 @@ from .database import Database
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-def create_run(db: Database, script_id: int) -> int:
+def create_run(db: Database, script_id: int, trigger: str | None = None) -> int:
     db.init()
+    db.migrate()
     cur = db.execute(
         """
-        INSERT INTO runs (script_id, status, started_at)
-        VALUES (?, ?, ?)
+        INSERT INTO runs (script_id, status, started_at, trigger)
+        VALUES (?, ?, ?, ?)
         """,
-        (script_id, "running", _now_iso()),
+        (script_id, "running", _now_iso(), trigger),
     )
     return int(cur.lastrowid)
 
@@ -37,6 +38,7 @@ def finish_run(
 
 def list_runs(db: Database, limit: int = 20, script_id: Optional[int] = None):
     db.init()
+    db.migrate()
     if script_id is None:
         return db.query(
             "SELECT * FROM runs ORDER BY id DESC LIMIT ?",
@@ -49,5 +51,6 @@ def list_runs(db: Database, limit: int = 20, script_id: Optional[int] = None):
 
 def get_run(db: Database, run_id: int):
     db.init()
+    db.migrate()
     rows = db.query("SELECT * FROM runs WHERE id = ?", (run_id,))
     return rows[0] if rows else None
