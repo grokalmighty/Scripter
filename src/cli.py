@@ -10,6 +10,8 @@ from .timefmt import to_local_display
 from .config_apply import apply_config
 from .file_triggers_repo import add_file_trigger, list_file_triggers, remove_file_trigger
 from .file_watcher import FileWatcher
+from .webhooks_repo import add_webhook, list_webhooks, remove_webhook
+from .webhook_server import serve as serve_webhooks
 
 @click.group()
 def cli():
@@ -212,3 +214,46 @@ def trigger_remove(trigger_id, db_path):
     if n == 0:
         raise click.ClickException(f"Trigger {trigger_id} not found")
     click.echo(f"Removed trigger {trigger_id}")
+
+@cli.group()
+def webhook():
+    """Manage and server webhooks."""
+    pass
+
+@webhook.command("add")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--name", required=True)
+@click.option("--script-id", type=int, required=True)
+def webhook_add(db_path, name, script_id):
+    db = Database(db_path)
+    wid = add_webhook(db, name=name, script_id=script_id)
+    click.echo(f"Added webhooks #{wid}: {name} -> script {script_id}")
+
+@webhook.command("list")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def webhook_list(db_path):
+    db = Database(db_path)
+    rows = list_webhooks(db)
+    if not rows:
+        click.echo("No webhooks.")
+        return
+    click.echo("id\tname\tscript")
+    for r in rows:
+        click.echo(f"{r['id']}\t{r['name']}\t{r['script_name']}")
+
+@webhook.command("remove")
+@click.argument("name")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def webhook_remove(name, db_path):
+    db = Database(db_path)
+    n = remove_webhook(db, name)
+    if n == 0:
+        raise click.ClickException(f"Webhook '{name}' not found")
+    click.echo(f"Removed webhook '{name}'")
+
+@webhook.command("serve")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--host", default="127.0.0.1")
+@click.option("--port", type=int, default=5055)
+def webhook_serve(db_path, host, port):
+    serve_webhooks(db_path=db_path, host=host, port=port)

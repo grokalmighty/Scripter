@@ -48,6 +48,14 @@ CREATE TABLE IF NOT EXISTS file_triggers (
     created_at TEXT NOT NULL,
     FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS webhooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    script_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
+);
 """
 
 class Database:
