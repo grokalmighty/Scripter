@@ -34,3 +34,20 @@ def finish_run(
         """,
         (status, _now_iso(), exit_code, stdout, stderr, run_id),
     )
+
+def list_runs(db: Database, limit: int = 20, script_id: Optional[int] = None):
+    db.init()
+    if script_id is None:
+        return db.query(
+            "SELECT * FROM runs ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
+    return db.query(
+        "SELECT * FROM runs WHERE script_id = ? ORDER BY id DESC LIMIT ?",
+        (script_id, limit),
+    )
+
+def get_run(db: Database, run_id: int):
+    db.init()
+    rows = db.query("SELECT * FROM runs WHERE id = ?", (run_id,))
+    return rows[0] if rows else None

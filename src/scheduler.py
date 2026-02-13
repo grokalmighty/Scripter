@@ -10,7 +10,7 @@ from .scripts_repo import get_script
 from .runs_repo import create_run, finish_run
 from .executor import run_command
 
-def run_loop(db_path: Optional[Path] = None, tick_seconds: int = 2) -> None:
+def run_loop(db_path: Optional[Path] = None, tick_seconds: int = 2, once: bool = False) -> None:
     db = Database(db_path)
     db.init()
 
@@ -36,5 +36,6 @@ def run_loop(db_path: Optional[Path] = None, tick_seconds: int = 2) -> None:
                 finish_run(db, run_id, "failed", None, "", f"{type(e).__name__}: {e}")
 
             mark_run(db, schedule_id)
-        
+        if once:
+            return
         time.sleep(tick_seconds)
