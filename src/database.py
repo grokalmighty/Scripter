@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE TABLE IF NOT EXISTS schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     script_id INTEGER NOT NULL,
-    interval_seconds INTEGER NOT NULL,
+    interval_seconds INTEGER,
+    cron TEXT,
+    tz TEXT,
     last_run TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
@@ -99,3 +101,10 @@ class Database:
         if "trigger" not in cols:
             conn.execute("ALTER TABLE runs ADD COLUMN trigger TEXT")
             conn.commit()
+
+        s_cols = [r["name"] for r in conn.execute("PRAGMA table_info(schedules)").fetchall()]
+        if "cron" not in s_cols:
+            conn.execute("ALTER TABLE schedules ADD COLUMN cron TEXT")
+        if "tz" not in s_cols:
+            conn.execute("ALTER TABLE schedules ADD COLUMN tz TEXT")
+        conn.commit()

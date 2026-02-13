@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from croniter import croniter
+from zoneinfo import ZoneInfo
 from .database import Database
 
-def _now():
+def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 def add_schedule(db: Database, script_id: int, interval_seconds: int) -> int:
     db.init()
-    db.migrate()
     now = _now().isoformat()
     cur = db.execute(
         """
@@ -22,23 +23,43 @@ def add_schedule(db: Database, script_id: int, interval_seconds: int) -> int:
 
 def due_schedules(db: Database):
     db.init()
-    db.migrate()
     rows = db.query("SELECT * FROM schedules")
     due = []
-    now = _now()
+    now_utc = _now()
 
     for r in rows:
-        last_run = r["last_run"]
         interval = r["interval_seconds"]
+        cron = r["cron"]
+        tz = r["tz"]
+        last_run = r["last_run"]
 
-        if last_run is None:
-            due.append(r)
+        if interval is not None:
+            if last_run is None:
+                due.append(r)
+                continue
+            last_dt = datetime.fromisoformat(last_run)
+            if now_utc >= last_dt + timedelta(seconds=int(interval)):
+                due.append(r)
             continue
-
-        last_dt = datetime.fromisoformat(last_run)
-        if now >= last_dt + timedelta(seconds=interval):
-            due.append(r)
         
+        if cron:
+            if tz:
+                zone = ZoneInfo(tz)
+            else:
+                zone = datetime.now().astimezone().tzinfo
+            
+            now_local = now_utc.astimezone(zone)
+
+            if last_run is None:
+                base = now_local - timedelta(minutes=1)
+            else:
+                base = datetime.fromisoformat(last_run).astimezone(zone)
+            
+            it = croniter(cron, base)
+            next_time = it.get_next(datetime)
+
+            if next_time <= now_local:
+                due.append(r)
     return due 
 
 def mark_run(db: Database, schedule_id: int):
@@ -50,7 +71,6 @@ def mark_run(db: Database, schedule_id: int):
 
 def list_schedules(db: Database):
     db.init()
-    db.migrate()
     return db.query(
         """
         SELECT s.id, s.script_id, sc.name as script_name, s.interval_seconds, s.last_run, s.created_at
@@ -58,3 +78,15 @@ def list_schedules(db: Database):
         JOIN scripts sc ON sc.id = s.script_id
         ORDER BY s.id ASC"""
     )
+
+def add_cron_schedule(db: Database, script_id: int, cron: str, tz: Optional[str] = None) -> int:
+    db.init()
+    now = _now().isoformat()
+    cur = db.execute(
+        """
+        INSERT INTO schedules (script_id, interval_seconds, cron, tz, last_run, created_at)
+        VALUES (?, NULL, ?, ?, NULL, ?)
+        """,
+        (script_id, cron, tz, now),
+    )
+    return int(cur.lastrowid)

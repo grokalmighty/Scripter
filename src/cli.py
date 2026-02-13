@@ -3,7 +3,7 @@ from pathlib import Path
 
 from .database import Database
 from .scripts_repo import add_script, list_scripts, get_script
-from .schedules_repo import add_schedule, list_schedules
+from .schedules_repo import add_schedule, list_schedules, add_cron_schedule
 from .scheduler import run_loop
 from .runs_repo import list_runs, get_run
 from .timefmt import to_local_display
@@ -90,6 +90,16 @@ def schedule_add(db_path, script_id, interval_seconds):
     sid = add_schedule(db, script_id=script_id, interval_seconds=interval_seconds)
     click.echo(f"Added schedule #{sid} for script {script_id} every {interval_seconds}s")
 
+@schedule.command("add-cron")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--script-id", type=int, required=True)
+@click.option("--cron", required=True, help='Cron like "0 9 * * 1-5" (min hour dom mon dow)')
+@click.option("--tz", default=None, help='IANA timezone like "America/New_York"')
+def schedule_add_cron(db_path, script_id, cron, tz):
+    db = Database(db_path)
+    sid = add_cron_schedule(db, script_id=script_id, cron=cron, tz=tz)
+    click.echo(f"Added cron schedule #{sid} for script {script_id}: {cron} ({tz or 'local'})")
+
 @cli.group()
 def runs():
     """Inspect execution history."""
@@ -143,14 +153,19 @@ def runs_show(run_id, db_path, max_chars):
 def schedule_list(db_path):
     db = Database(db_path)
     rows = list_schedules(db)
+
+    kind = "cron" if r["cron"] else "interval"
+    spec = r["cron"] if r["cron"] else f"{r['inteval_seconds']}s"
+    tz = r["tz"] or ""
+
     if not rows:
         click.echo("No schedules found.")
         return
     
-    click.echo("id\tscript\tinterval\tlast_run")
+    click.echo("id\tscript\tinterval\tlast_run\tkind\tspec\ttz")
     for r in rows:
         click.echo(
-            f"{r['id']}\t{r['script_name']}\t{r['interval_seconds']}s\t{to_local_display(r['last_run'])}"
+            f"{r['id']}\t{r['script_name']}\t{r['interval_seconds']}s\t{to_local_display(r['last_run'])}\t{kind}\t{spec}\t{tz}"
         )
 
 @cli.group()
