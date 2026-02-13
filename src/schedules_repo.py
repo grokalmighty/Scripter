@@ -45,3 +45,13 @@ def mark_run(db: Database, schedule_id: int):
         "UPDATE schedules SET last_run = ? WHERE id = ?",
         (now, schedule_id),
     )
+
+def list_schedules(db: Database):
+    db.init()
+    return db.query(
+        """
+        SELECT s.id, s.script_id, sc.name as script_name, s.interval_seconds, s.last_run, s.created_at
+        FROM schedules s
+        JOIN scripts sc ON sc.id = s.script_id
+        ORDER BY s.id ASC"""
+    )

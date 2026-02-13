@@ -3,10 +3,11 @@ from pathlib import Path
 
 from .database import Database
 from .scripts_repo import add_script, list_scripts, get_script
-from .schedules_repo import add_schedule
+from .schedules_repo import add_schedule, list_schedules
 from .scheduler import run_loop
 from .runs_repo import list_runs, get_run
 from .timefmt import to_local_display
+from .config_apply import apply_config
 
 @click.group()
 def cli():
@@ -129,3 +130,31 @@ def runs_show(run_id, db_path, max_chars):
     click.echo(clip(r["stdout"]))
     click.echo(f"\n--- stderr ---")
     click.echo(clip(r["stderr"]))
+
+@schedule.command("list")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def schedule_list(db_path):
+    db = Database(db_path)
+    rows = list_schedules(db)
+    if not rows:
+        click.echo("No schedules found.")
+        return
+    
+    click.echo("id\tscript\tinterval\tlast_run")
+    for r in rows:
+        click.echo(
+            f"{r['id']}\t{r['script_name']}\t{r['interval_seconds']}s\t{to_local_display(r['last_run'])}"
+        )
+
+@cli.group()
+def config():
+    """Import/export config files."""
+    pass
+
+@config.command("apply")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def config_apply(path, db_path):
+    db = Database(db_path)
+    apply_config(db, path)
+    click.echo(f"Applied config: {path}")
