@@ -9,9 +9,11 @@ from .webhooks_repo import get_webhook
 from .scripts_repo import get_script
 from .runs_repo import create_run, finish_run
 from .executor import run_command
+from .locks import try_acquire, release, owner_id
 
 class WebhookHandler(BaseHTTPRequestHandler):
     db: Database = None
+    owner: str = ""
 
     def _json(self, code: int, payload: dict):
         body = json.dumps(payload).encode("utf-8")
@@ -34,7 +36,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
             script = get_script(self.db, wh["script_id"])
             if script is None:
                 return self._json(404, {"ok": False, "error": "script not found"})
-
+            
+            lock_key = f"script:{script.id}"
+            if not try_acquire(self.db, lock_key, self.owner):
+                return self._json(409, {"ok": False, "error": "script is already running"})
             run_id = create_run(self.db, script.id, trigger=f"webhook:{name}")
 
             try:
@@ -45,13 +50,16 @@ class WebhookHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 finish_run(self.db, run_id, "failed", None, "", f"{type(e).__name__}: {e}")
                 return self._json(500, {"ok": False, "run_id": run_id, "error": str(e)})
-        
+            finally:
+                release(self.db, lock_key, self.owner)
         return self._json(404, {"ok": False, "error": "unknown route"})
 
 def serve(db_path, host: str, port: int):
     db = Database(db_path)
     db.init()
+
     WebhookHandler.db = db
+    WebhookHandler
     server = HTTPServer((host, port), WebhookHandler)
     print(f"Webhook server listening on http://{host}:{port}")
     server.serve_forever()

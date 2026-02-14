@@ -58,6 +58,12 @@ CREATE TABLE IF NOT EXISTS webhooks (
     created_at TEXT NOT NULL,
     FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS locks (
+    key TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    acquired_at TEXT NOT NULL
+);
 """
 
 class Database:
@@ -74,18 +80,30 @@ class Database:
     
     def init(self) -> None:
         conn = self.connect()
+        conn = sqlite3.connect(self.path, timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA busy_timeout = 5000;")
         conn.executescript(SCHEMA)
         conn.commit()
         self.migrate()
 
     def execute(self, sql: str, params: Iterable[Any] = ()) -> sqlite3.Cursor:
         conn = self.connect()
+        conn = sqlite3.connect(self.path, timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA busy_timeout = 5000;")
         cur = conn.execute(sql, tuple(params))
         conn.commit()
         return cur
 
     def query(self, sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
         conn = self.connect()
+        conn = sqlite3.connect(self.path, timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA busy_timeout = 5000;")
         cur = conn.execute(sql, tuple(params))
         return list(cur.fetchall())
 
@@ -96,7 +114,10 @@ class Database:
     
     def migrate(self) -> None:
         conn = self.connect()
-
+        conn = sqlite3.connect(self.path, timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA busy_timeout = 5000;")
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(runs)").fetchall()]
         if "trigger" not in cols:
             conn.execute("ALTER TABLE runs ADD COLUMN trigger TEXT")

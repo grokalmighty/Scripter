@@ -12,10 +12,13 @@ from .runs_repo import create_run, finish_run
 from .executor import run_command
 from .file_triggers_repo import list_file_triggers
 from .file_watcher import FileWatcher 
+from .locks import try_acquire, release, owner_id
 
 def run_loop(db_path: Optional[Path] = None, tick_seconds: int = 2, once: bool = False) -> None:
     db = Database(db_path)
     db.init()
+
+    owner = owner_id()
     
     watcher = FileWatcher()
 
@@ -31,6 +34,10 @@ def run_loop(db_path: Optional[Path] = None, tick_seconds: int = 2, once: bool =
                 mark_run(db, schedule_id)
                 continue
             
+            lock_key = f"script:{script_id}"
+            if not try_acquire(db, lock_key, owner):
+                mark_run(db, schedule_id)
+                continue 
             run_id = create_run(db, script_id, trigger=f"schedule:{schedule_id}")
 
             try:
@@ -39,6 +46,8 @@ def run_loop(db_path: Optional[Path] = None, tick_seconds: int = 2, once: bool =
                 finish_run(db, run_id, status, result.exit_code, result.stdout, result.stderr)
             except Exception as e:
                 finish_run(db, run_id, "failed", None, "", f"{type(e).__name__}: {e}")
+            finally:
+                release(db, lock_key, owner)
 
             mark_run(db, schedule_id)
         
@@ -89,6 +98,10 @@ def run_loop(db_path: Optional[Path] = None, tick_seconds: int = 2, once: bool =
 
             last_file_exec_time[ft_id] = now
 
+            lock_key = f"script:{script_id}"
+            if not try_acquire(db, lock_key, owner):
+                mark_run(db, schedule_id)
+                continue 
             run_id = create_run(db, script_id, trigger=f"file:{ft_id}")
             try:
                 result = run_command(script.command, working_dir=script.working_dir)
@@ -96,7 +109,8 @@ def run_loop(db_path: Optional[Path] = None, tick_seconds: int = 2, once: bool =
                 finish_run(db, run_id, status, result.exit_code, result.stdout, result.stderr)
             except Exception as e:
                 finish_run(db, run_id, "failed", None, "", f"{type(e).__name__}: {e}")
-
+            finally:
+                release(db, lock_key, owner)
             last_executed_for_change[ft_id] = now
         if once:
             return
