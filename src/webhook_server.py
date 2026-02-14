@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 
@@ -10,6 +11,8 @@ from .scripts_repo import get_script
 from .runs_repo import create_run, finish_run
 from .executor import run_command
 from .locks import try_acquire, release, owner_id
+
+WEBHOOK_TOKEN = os.environ.get("SCRIPTER_WEBHOOK_TOKEN")
 
 class WebhookHandler(BaseHTTPRequestHandler):
     db: Database = None
@@ -28,6 +31,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
         parts = parsed.path.strip("/").split("/")
 
         if len(parts) == 2 and parts[0] == "trigger":
+            if WEBHOOK_TOKEN:
+                provided = self.headers.get("X-Scripter-Token")
+                if provided != WEBHOOK_TOKEN:
+                    return self._json(401, {"ok": False, "error": "unauthorized"})
             name = parts[1]
             wh = get_webhook(self.db, name)
             if wh is None:
