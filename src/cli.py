@@ -12,6 +12,7 @@ from .file_triggers_repo import add_file_trigger, list_file_triggers, remove_fil
 from .file_watcher import FileWatcher
 from .webhooks_repo import add_webhook, list_webhooks, remove_webhook
 from .webhook_server import serve as serve_webhooks
+from .config_export import export_config
 
 @click.group()
 def cli():
@@ -154,19 +155,21 @@ def schedule_list(db_path):
     db = Database(db_path)
     rows = list_schedules(db)
 
-    kind = "cron" if r["cron"] else "interval"
-    spec = r["cron"] if r["cron"] else f"{r['inteval_seconds']}s"
-    tz = r["tz"] or ""
-
     if not rows:
         click.echo("No schedules found.")
         return
-    
-    click.echo("id\tscript\tinterval\tlast_run\tkind\tspec\ttz")
+
+    click.echo("id\tscript\tkind\tspec\ttz\tlast_run")
     for r in rows:
+        kind = "cron" if r["cron"] else "interval"
+        spec = r["cron"] if r["cron"] else f"{r['interval_seconds']}s"
+        tz = r["tz"] or ""
+        last_run = to_local_display(r["last_run"]) if r["last_run"] else ""
+
         click.echo(
-            f"{r['id']}\t{r['script_name']}\t{r['interval_seconds']}s\t{to_local_display(r['last_run'])}\t{kind}\t{spec}\t{tz}"
+            f"{r['id']}\t{r['script_name']}\t{kind}\t{spec}\t{tz}\t{last_run}"
         )
+
 
 @cli.group()
 def config():
@@ -181,6 +184,13 @@ def config_apply(path, db_path):
     apply_config(db, path)
     click.echo(f"Applied config: {path}")
 
+@config.command("export")
+@click.argument("path", type=click.Path(dir_okay=False, path_type=Path))
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def config_export(path, db_path):
+    db = Database(db_path)
+    export_config(db, path)
+    click.echo(f"Exported config to: {path}")
 @cli.group()
 def trigger():
     """Manage file triggers."""

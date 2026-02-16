@@ -1,0 +1,14 @@
+scripts:
+- name: hello
+  command: echo hello
+  cwd: null
+schedules:
+- script: hello
+  interval_seconds: 10
+file_triggers:
+- script: hello
+  path: watched
+  recursive: false
+webhooks:
+- name: hello
+  script: hello

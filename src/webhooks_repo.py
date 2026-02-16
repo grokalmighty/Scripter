@@ -18,7 +18,7 @@ def add_webhook(db: Database, name: str, script_id: int) -> int:
     )
     return int(cur.lastrowid)
 
-def list_webhooks(db: Database, name: str, script_id: int) -> int:
+def list_webhooks(db: Database) -> int:
     db.init()
     return db.query(
         """

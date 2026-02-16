@@ -6,35 +6,66 @@ import yaml
 
 from .database import Database
 from .scripts_repo import add_script, list_scripts
-from .schedules_repo import add_schedule
+from .schedules_repo import add_schedule, add_cron_schedule
+from .file_triggers_repo import add_file_trigger
+from .webhooks_repo import add_webhook
 
 def apply_config(db: Database, path: Path) -> None:
     db.init()
-    data: dict[str, Any] = yaml.safe_load(path.read_text()) or {}
+    data = yaml.safe_load(path.read_text()) or {}
 
     scripts = data.get("scripts", [])
     schedules = data.get("schedules", [])
 
     existing = {s.name: s.id for s in list_scripts(db)}
 
-    for s in scripts:
-        name = s["name"]
-        if name in existing:
-            continue
+    name_to_id: dict[str, int] = {}
+    for s in data.get("scripts", []):
         sid = add_script(
             db,
-            name=name,
+            name=s["name"],
             command=s["command"],
             working_dir=s.get("cwd"),
         )
-        existing[name] = sid
+        name_to_id[s["name"]] = sid
+
+    def resolve_script(ref):
+        # ref can be a name ("hello") or an int id
+        if isinstance(ref, int):
+            return ref
+        if isinstance(ref, str) and ref.isdigit():
+            return int(ref)
+        return name_to_id[ref]
     
-    for sch in schedules:
-        script_name = sch["script"]
-        if script_name not in existing:
-            raise ValueError(f"Schedule references unknown script: {script_name}")
-        add_schedule(
+    for sch in data.get("schedules", []):
+        script_id = resolve_script(sch["script"])
+
+        if "cron" in sch:
+            add_cron_schedule(
+                db,
+                script_id=script_id,
+                cron=sch["cron"],
+                tz=sch.get("tz"),
+            )
+        else:
+            add_schedule(
+                db,
+                script_id=script_id,
+                interval_seconds=int(sch["interval_seconds"]),
+            )
+    for ft in data.get("file_triggers", []):
+        script_id = resolve_script(ft["script"])
+        add_file_trigger(
             db,
-            script_id=existing[script_name],
-            interval_seconds=int(sch["interval_seconds"]),
+            script_id=script_id,
+            path=ft["path"],
+            recursive=bool(ft.get("recursive", False)),
+        )
+
+    for w in data.get("webhooks", []):
+        script_id = resolve_script(w["script"])
+        add_webhook(
+            db,
+            name=w["name"],
+            script_id=script_id,
         )

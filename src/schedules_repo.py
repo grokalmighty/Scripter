@@ -73,10 +73,18 @@ def list_schedules(db: Database):
     db.init()
     return db.query(
         """
-        SELECT s.id, s.script_id, sc.name as script_name, s.interval_seconds, s.last_run, s.created_at
-        FROM schedules s
-        JOIN scripts sc ON sc.id = s.script_id
-        ORDER BY s.id ASC"""
+        SELECT
+            sc.id,
+            sc.script_id,
+            s.name AS script_name,
+            sc.interval_seconds,
+            sc.cron,
+            sc.tz,
+            sc.last_run
+        FROM schedules sc
+        JOIN scripts s ON s.id = sc.script_id
+        ORDER BY sc.id ASC
+        """
     )
 
 def add_cron_schedule(db: Database, script_id: int, cron: str, tz: Optional[str] = None) -> int:
