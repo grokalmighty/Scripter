@@ -183,6 +183,13 @@ def schedule_list(db_path):
             f"{r['id']}\t{r['script_name']}\t{kind}\t{spec}\t{tz}\t{last_run}"
         )
 
+@cli.command("runs-clear")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def runs_clear(db_path):
+    db = Database(db_path)
+    db.init()
+    db.execute("delete from runs;")
+    click.echo("Cleared all runs.")
 
 @cli.group()
 def config():
