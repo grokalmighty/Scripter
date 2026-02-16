@@ -14,6 +14,12 @@ class FileWatcher:
         """
         base = Path(base_path)
 
+        if base.is_file():
+            mtime = base.stat().st_mtime
+            prev = self._last_seen.get(str(base))
+            self._last_seen[str(base)] = mtime
+            return prev is not None and mtime != prev
+        
         if not base.exists():
             return False
         
