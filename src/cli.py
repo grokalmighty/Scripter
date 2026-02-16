@@ -24,6 +24,19 @@ def version():
     """Show version."""
     click.echo("Scripter v0.0.1")
 
+@cli.command("run")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--script-id", type=int, required=True)
+def run_cmd(db_path, script_id):
+    db = Database(db_path)
+    db.init()
+    from .locks import owner_id
+    from .triggers.base import TriggerEvent
+    from .run_service import execute_event
+
+    execute_event(db, TriggerEvent(trigger_id="manual", script_id=script_id), owner_id())
+    click.echo(f"Triggered script {script_id} (manual)")
+
 @cli.group()
 def script():
     """Manage scripts."""

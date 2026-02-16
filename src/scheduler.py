@@ -53,7 +53,7 @@ def run_loop(db_path: Optional[Path] = None,
     while True:
         for source in active_sources:
             for event in source.poll(db):
-                _execute_event(db, event, owner)
+                execute_event(db, event, owner)
     
         if once:
             return
