@@ -77,6 +77,45 @@ CREATE TABLE IF NOT EXISTS one_shots (
 
 CREATE INDEX IF NOT EXISTS idx_one_shots_due
     ON one_shots(fired_at_utc, run_at_utc);
+
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    topic TEXT NOT NULL,
+    payload_json TEXT,
+    created_at_utc TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_topic_id ON events(topic, id);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    topic TEXT NOT NULL,
+    script_id INTEGER NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    UNIQUE(topic, script_id),
+    FOREIGN KEY(script_id) REFERENCES scripts(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_topic ON subscriptions(topic);
+
+CREATE TABLE IF NOT EXISTS deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL,
+    subscription_id INTEGER NOT NULL,
+    claimed_at_utc TEXT,
+    claimed_by TEXT,
+    processed_at_utc TEXT,
+    status TEXT,
+    UNIQUE(event_id, subscription_id),
+    FOREIGN KEY(event_id) REFERENCES events(id),
+    FOREIGN KEY(subscription_id) REFERENCES subscriptions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_deliveries_claim
+    ON deliveries(claimed_at_utc, processed_at_utc);
+
+CREATE INDEX IF NOT EXISTS idx_deliveries_event
+    ON deliveries(event_id);
 """
 
 class Database:

@@ -16,6 +16,7 @@ from .file_watcher import FileWatcher
 from .webhooks_repo import add_webhook, list_webhooks, remove_webhook
 from .webhook_server import serve as serve_webhooks
 from .config_export import export_config
+from .event_bus_repo import publish_event, subscribe, list_events, list_subscriptions
 
 @click.group()
 def cli():
@@ -136,7 +137,7 @@ def runs_list(db_path, limit, script_id):
     click.echo("id\tscript\ttrigger\tstatus\texit\tstarted\t\t\tfinished")
     for r in rows:
         click.echo(
-            f"{r['id']}\t{r['script_id']}\t{r["trigger"]}\t{r['status']}\t{r['exit_code']}\t"
+            f"{r['id']}\t{r['script_id']}\t{r['trigger']}\t{r['status']}\t{r['exit_code']}\t"
             f"{to_local_display(r['started_at'])}\t{to_local_display(r['finished_at'])}"
         )
 
@@ -327,7 +328,7 @@ def oneshot():
 @oneshot.command("add")
 @click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
 @click.option("--script-id", type=int, required=True)
-@click.opton("--at", "at_str", type=str, default=None, help='Local datetime like"2026-02-16T21:30"')
+@click.option("--at", "at_str", type=str, default=None, help='Local datetime like"2026-02-16T21:30"')
 @click.option("--tz", "tz_str", type=str, default="America/New_York")
 @click.option("--in", "in_str", type=str, default=None, help='Delay like "15m", "2h"')
 def oneshot_add(db_path, script_id: int, at_str: str | None, tz_str: str, in_str: str | None):
@@ -361,7 +362,7 @@ def oneshot_add(db_path, script_id: int, at_str: str | None, tz_str: str, in_str
         tz_to_store = tz_str
 
     tid = add_one_shot(db, script_id=script_id, run_at_utc_iso=run_at_utc_iso, tz=tz_to_store)
-    click.echo(f"Addded one-shot #{tid} for script {script_id} at {run_at_utc_iso} UTC")
+    click.echo(f"Added one-shot #{tid} for script {script_id} at {run_at_utc_iso} UTC")
 
 @oneshot.command("list")
 @click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
@@ -394,5 +395,60 @@ def oneshot_remove(db_path, oneshot_id: int):
         raise click.ClickException(f"No one-shot with id {oneshot_id}")
     click.echo(f"Removed one-shot #{oneshot_id}")
 
-    
+@cli.group("event")
+def event():
+    """Publish events and manage subscriptions."""
+    pass
 
+@event.command("publish")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--topic", required=True)
+@click.option("--payload", "payload_json", default=None, help="JSON string payload")
+def event_publish(db_path, topic, payload_json):
+    db = Database(db_path)
+    db.init()
+
+    eid = publish_event(db, topic=topic, payload_json=payload_json)
+    click.echo(f"Published event #{eid} topic={topic}")
+
+@event.command("subscribe")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--topic", required=True)
+@click.option("--script-id", type=int, required=True)
+def event_subscribe(db_path, topic, script_id):
+    db = Database(db_path)
+    db.init()
+
+    sid = subscribe(db, topic=topic, script_id=script_id)
+    click.echo(f"Subscribed scripts {script_id} to topic '{topic}' (subscription #{sid})")
+
+@event.command("list")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--limit", type=int, default=20)
+def event_list(db_path, limit):
+    db = Database(db_path)
+    db.init()
+
+    rows = list_events(db, limit=limit)
+    if not rows:
+        click.echo("No events.")
+        return
+    
+    click.echo("id\ttopic\tcreated_at_utc\tpayload_json")
+    for r in rows:
+        click.echo(f"{r['id']}\t{r['topic']}\t{r['created_at_utc']}\t{r.get('payload_json') or ''}")
+
+@event.command("subscriptions")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def event_subscriptions(db_path):
+    db = Database(db_path)
+    db.init()
+
+    rows = list_subscriptions(db)
+    if not rows:
+        click.echo("No subscriptions.")
+        return
+    
+    click.echo("id\ttopic\tscript_id\tcreated_at_utc")
+    for r in rows:
+        click.echo(f"{r['id']}\t{r['topic']}\t{r['script_id']}\t{r['created_at_utc']}")
