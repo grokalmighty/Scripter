@@ -26,4 +26,3 @@ def execute_event(db: Database, event: TriggerEvent, owner: str) -> None:
         finish_run(db, run_id, "failed", None, "", f"{type(e).__name__}: {e}")
     finally:
         release(db, lock_key, owner)
-        

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Optional, Iterable, Any
+from typing import Optional, Iterable, Any, Sequence
 
 DEFAULT_DB_PATH = Path.cwd() / "scripter.db"
 
@@ -64,6 +64,19 @@ CREATE TABLE IF NOT EXISTS locks (
     owner TEXT NOT NULL,
     acquired_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS one_shots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    script_id INTEGER NOT NULL,
+    run_at_utc TEXT NOT NULL,
+    tz TEXT,
+    fired_at_utc TEXT,
+    created_at_utc TEXT NOT NULL,
+    FOREIGN KEY(script_id) REFERENCES scripts(id)
+    );
+
+CREATE INDEX IF NOT EXISTS idx_one_shots_due
+    ON one_shots(fired_at_utc, run_at_utc);
 """
 
 class Database:
@@ -129,3 +142,14 @@ class Database:
         if "tz" not in s_cols:
             conn.execute("ALTER TABLE schedules ADD COLUMN tz TEXT")
         conn.commit()
+    
+    def execute_returning(self, sql: str, params: Sequence[Any] = ()) -> list[sqlite3.Row]:
+        """
+        Execute a statement that uses RETURNING and fetch all rows BEFORE committing.
+        Prevents: SQL statements in progress
+        """
+        conn = self.connect()
+        cur = conn.execute(sql, params)
+        rows = cur.fetchall()
+        conn.commit()
+        return rows 

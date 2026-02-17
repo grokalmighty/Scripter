@@ -1,5 +1,8 @@
 import click
+import re
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from .database import Database
 from .scripts_repo import add_script, list_scripts, get_script
@@ -302,3 +305,94 @@ def webhook_remove(name, db_path):
 @click.option("--port", type=int, default=5055)
 def webhook_serve(db_path, host, port):
     serve_webhooks(db_path=db_path, host=host, port=port)
+
+def _parse_in(s: str) -> timedelta:
+    m = re.fullmatch(r"(\d+)([smhd])", s.strip().lower())
+    if not m:
+        raise click.ClickException("Invalid duration.")
+    n = int(m.group(1))
+    unit = m.group(2)
+    return {
+        "s": timedelta(seconds=n),
+        "m": timedelta(minutes=n),
+        "h": timedelta(hours=n),
+        "d": timedelta(days=n),
+    }[unit]
+
+@cli.group("oneshot")
+def oneshot():
+    """Manage one-shot delayed triggers."""
+    pass
+
+@oneshot.command("add")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--script-id", type=int, required=True)
+@click.opton("--at", "at_str", type=str, default=None, help='Local datetime like"2026-02-16T21:30"')
+@click.option("--tz", "tz_str", type=str, default="America/New_York")
+@click.option("--in", "in_str", type=str, default=None, help='Delay like "15m", "2h"')
+def oneshot_add(db_path, script_id: int, at_str: str | None, tz_str: str, in_str: str | None):
+    if (at_str is None) == (in_str is None):
+        raise click.ClickException("Provide exactly one of --at or --in")
+    
+    db = Database(db_path)
+    db.init()
+
+    from .oneshots_repo import add_one_shot
+
+    if in_str is not None:
+        delta = _parse_in(in_str)
+        run_at_utc = datetime.now(timezone.utc) + delta
+        run_at_utc = run_at_utc.replace(microsecond=0)
+        run_at_utc_iso = run_at_utc.isoformat()
+        tz_to_store = None
+    else:
+        try:
+            tz = ZoneInfo(tz_str)
+        except Exception:
+            raise click.ClickException(f"Invalid timezone: {tz_str}")
+        
+        try:
+            local_naive = datetime.fromisoformat(at_str)
+        except ValueError:
+            raise click.ClickException('Invalid --at. Use ISO like "2026-02-16T21:30"')
+        
+        local = local_naive.replace(tzinfo=tz)
+        run_at_utc_iso = local.astimezone(timezone.utc).replace(microsecond=0).isoformat()
+        tz_to_store = tz_str
+
+    tid = add_one_shot(db, script_id=script_id, run_at_utc_iso=run_at_utc_iso, tz=tz_to_store)
+    click.echo(f"Addded one-shot #{tid} for script {script_id} at {run_at_utc_iso} UTC")
+
+@oneshot.command("list")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--all", "include_fired", is_flag=True, default=False)
+def oneshot_list(db_path, include_fired: bool):
+    db = Database(db_path)
+    db.init()
+
+    from .oneshots_repo import list_one_shots
+    rows = list_one_shots(db, include_fired=include_fired)
+
+    if not rows:
+        click.echo("No one-shots.")
+        return
+    
+    click.echo("id\tscript\trun_at_utc\ttz\tfired_at_utc")
+    for r in rows:
+        click.echo(f"{r['id']}\t{r['script_id']}\t{r['run_at_utc']}\t{r.get('tz') or ''}\t{r.get('fired_at_utc') or ''}")
+
+@oneshot.command("remove")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.argument("oneshot_id", type=int)
+def oneshot_remove(db_path, oneshot_id: int):
+    db = Database(db_path)
+    db.init()
+
+    from .oneshots_repo import remove_one_shot
+    n = remove_one_shot(db, oneshot_id)
+    if n == 0:
+        raise click.ClickException(f"No one-shot with id {oneshot_id}")
+    click.echo(f"Removed one-shot #{oneshot_id}")
+
+    
+
