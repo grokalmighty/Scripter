@@ -22,6 +22,8 @@ from .pending_events_repo import enqueue_event
 from .daemon_hooks_repo import hooks_for_event
 from .signal_hooks_repo import hooks_for_signal
 
+from .trigger_sources.app_watch import AppWatchSource
+
 @dataclass
 class _DaemonControl:
     stop: bool = False
@@ -83,9 +85,11 @@ def run_loop(db_path: Optional[Path] = None,
                                             ScheduleSource(), 
                                             OneShotSource(), 
                                             EventBusSource(owner),
+                                            AppWatchSource(),
                                             InternalQueueSource(owner),
-                                            FileWatchSource()]
+                                            FileWatchSource(),]
     )
+    print("SOURCES:", [type(s).__name__ for s in active_sources])
 
     while not ctl.stop:
         if ctl.reload:

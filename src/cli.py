@@ -569,3 +569,43 @@ def signal_hook_remove(db_path, hook_id):
     n = remove_signal_hook(db, hook_id)
     if n == 0: raise click.ClickException("Hook not found")
     click.echo(f"Removed signal hook {hook_id}")
+
+@cli.group("app-trigger")
+def app_trigger():
+    """Manage app launch/exit triggers (process polling)."""
+    pass
+
+@app_trigger.command("add")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--process", "process_name", required=True, help="Process name like Safari, Spotify")
+@click.option("--on", "on_event", type=click.Choice(["launch", "exit"]), required=True)
+@click.option("--script-id", type=int, required=True)
+def app_trigger_add(db_path, process_name, on_event, script_id):
+    db = Database(db_path); db.init()
+    from .app_triggers_repo import add_app_trigger
+    add_app_trigger(db, script_id=script_id, process_name=process_name, on_event=on_event)
+    click.echo(f"Added app trigger: {process_name} on {on_event} -> script {script_id}")
+
+@app_trigger.command("list")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def app_trigger_list(db_path):
+    db = Database(db_path); db.init()
+    from .app_triggers_repo import list_app_triggers
+    rows = list_app_triggers(db)
+    if not rows:
+        click.echo("No app triggers.")
+        return
+    click.echo("id\tprocess\ton\tscript_id")
+    for r in rows:
+        click.echo(f"{r.id}\t{r.process_name}\t{r.on_event}\t{r.script_id}")
+
+@app_trigger.command("remove")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.argument("trigger_id", type=int)
+def app_trigger_remove(db_path, trigger_id):
+    db = Database(db_path); db.init()
+    from .app_triggers_repo import remove_app_trigger
+    n = remove_app_trigger(db, trigger_id)
+    if n == 0:
+        raise click.ClickException("Trigger not found")
+    click.echo(f"Removed app trigger {trigger_id}")

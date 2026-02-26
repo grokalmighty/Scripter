@@ -169,6 +169,19 @@ CREATE TABLE IF NOT EXISTS signal_hooks (
 
 CREATE INDEX IF NOT EXISTS idx_signal_hooks_signal
     ON signal_hooks(signal);
+
+CREATE TABLE IF NOT EXISTS app_triggers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    script_id INTEGER NOT NULL,
+    process_name TEXT NULL,
+    on_event TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    UNIQUE(script_id, process_name, on_event),
+    FOREIGN KEY(script_id) REFERENCES scripts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_triggers_lookup
+    ON app_triggers(process_name, on_event);
 """
 
 class Database:
