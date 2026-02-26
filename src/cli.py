@@ -452,3 +452,46 @@ def event_subscriptions(db_path):
     click.echo("id\ttopic\tscript_id\tcreated_at_utc")
     for r in rows:
         click.echo(f"{r['id']}\t{r['topic']}\t{r['script_id']}\t{r['created_at_utc']}")
+
+@cli.group("hook")
+def hook():
+    """Manage run hooks."""
+    pass
+
+@hook.command("add")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--on-script", "on_script_id", type=int, required=True)
+@click.option("--on", "on_status", type=click.Choice(["success", "failed", "any"]), required=True)
+@click.option("--run", "target_script_id", type=int, required=True)
+def hook_add(db_path, on_script_id, on_status, target_script_id):
+    db = Database(db_path)
+    db.init()
+    from .run_hooks_repo import add_hook
+    hid = add_hook(db, on_script_id, on_status, target_script_id)
+    click.echo(f"Added hook #{hid}: when script {on_script_id} {on_status} -> run {target_script_id}")
+
+@hook.command("list")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def hook_list(db_path):
+    db = Database(db_path)
+    db.init()
+    from .run_hooks_repo import list_hooks
+    rows = list_hooks(db)
+    if not rows:
+        click.echo("No hooks.")
+        return
+    click.echo("id\ton_script_id\ton_status\ttarget_script_id\tcreated_at_utc")
+    for r in rows:
+        click.echo(f"{r['id']}\t{r['on_script_id']}\t{r['on_status']}\t{r['target_script_id']}\t{r['created_at_utc']}")
+    
+@hook.command("remove")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.argument("hook_id", type=int)
+def hook_remove(db_path, hook_id):
+    db = Database(db_path)
+    db.init()
+    from .run_hooks_repo import remove_hook
+    n = remove_hook(db, hook_id)
+    if n == 0:
+        raise click.ClickException(f"Hook {hook_id} not found")
+    click.echo(f"Removed hook {hook_id}")

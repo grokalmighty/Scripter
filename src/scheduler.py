@@ -13,6 +13,8 @@ from .trigger_sources.event_bus import EventBusSource
 from .trigger_sources.file_watch import FileWatchSource
 from .trigger_sources.schedules import ScheduleSource
 from .trigger_sources.one_shots import OneShotSource
+from .trigger_sources.internal_queue import InternalQueueSource
+from .pending_events_repo import mark_processed
 
 def run_loop(db_path: Optional[Path] = None, 
              tick_seconds: int = 2, 
@@ -24,14 +26,22 @@ def run_loop(db_path: Optional[Path] = None,
     owner = owner_id()
     
     active_sources: list[TriggerSource] = list(
-        sources if sources is not None else [ScheduleSource(), OneShotSource(), EventBusSource(owner), FileWatchSource()]
+        sources if sources is not None else [
+                                            ScheduleSource(), 
+                                            OneShotSource(), 
+                                            EventBusSource(owner),
+                                            InternalQueueSource(owner),
+                                            FileWatchSource()]
     )
 
     while True:
         for source in active_sources:
             events = source.poll(db) or []
             for event in events:
+                pending_id = event.payload.get("_pending_id")
                 def on_finished(status, run_id):
+                    if pending_id is not None:
+                        mark_processed(db, int(pending_id))
                     delivery_id = event.payload.get("delivery_id")
                     if delivery_id is not None:
                         mark_delivery_processed(db, int(delivery_id))

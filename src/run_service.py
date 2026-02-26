@@ -7,6 +7,9 @@ from .locks import try_acquire, release
 from .runs_repo import create_run, finish_run
 from .scripts_repo import get_script
 from .triggers.base import TriggerEvent
+from .run_hooks_repo import hooks_for
+from .triggers.base import TriggerEvent
+from .pending_events_repo import enqueue_event
 
 def execute_event(db: Database, event: TriggerEvent, owner: str, on_finished: Optional[Callable[[str, int | None], None]] = None):
     script = get_script(db, event.script_id)
@@ -23,6 +26,19 @@ def execute_event(db: Database, event: TriggerEvent, owner: str, on_finished: Op
         result = run_command(script.command, working_dir=script.working_dir)
         status = "success" if result.exit_code == 0 else "failed"
         finish_run(db, run_id, status, result.exit_code, result.stdout, result.stderr)
+
+        for hook in hooks_for(db, on_script_id=event.script_id, status=status):
+            enqueue_event(
+                db,
+                trigger_id=f"hook:{event.script_id}:{status}",
+                script_id=int(hook["target_script_id"]),
+                payload={
+                    "from_script_id": event.script_id,
+                    "status": status,
+                    "hook_id": int(hook["id"]),
+                },
+            )
+
         if on_finished:
             on_finished(status, run_id)
     except Exception as e:

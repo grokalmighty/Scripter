@@ -116,6 +116,35 @@ CREATE INDEX IF NOT EXISTS idx_deliveries_claim
 
 CREATE INDEX IF NOT EXISTS idx_deliveries_event
     ON deliveries(event_id);
+
+CREATE TABLE IF NOT EXISTS run_hooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    on_script_id INTEGER NOT NULL,
+    on_status TEXT NOT NULL,
+    target_script_id INTEGER NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    UNIQUE(on_script_id, on_status, target_script_id),
+    FOREIGN KEY(on_script_id) REFERENCES scripts(id),
+    FOREIGN KEY(target_script_id) REFERENCES scripts(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_run_hooks_on
+    ON run_hooks(on_script_id, on_status);
+
+CREATE TABLE IF NOT EXISTS pending_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trigger_id TEXT NOT NULL,
+    script_id INTEGER NOT NULL,
+    payload_json TEXT,
+    created_at_utc TEXT NOT NULL,
+    claimed_at_utc TEXT,
+    claimed_by TEXT,
+    processed_at_utc TEXT,
+    FOREIGN KEY(script_id) REFERENCES scripts(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_events_ready
+    ON pending_events(processed_at_utc, claimed_at_utc, id);
 """
 
 class Database:
