@@ -145,6 +145,30 @@ CREATE TABLE IF NOT EXISTS pending_events (
 
 CREATE INDEX IF NOT EXISTS idx_pending_events_ready
     ON pending_events(processed_at_utc, claimed_at_utc, id);
+
+CREATE TABLE IF NOT EXISTS daemon_hooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event TEXT NOT NULL,
+    script_id INTEGER NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    UNIQUE(event, script_id),
+    FOREIGN KEY(script_id) REFERENCES scripts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_daemon_hooks_event
+    ON daemon_hooks(event);
+
+CREATE TABLE IF NOT EXISTS signal_hooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    signal TEXT NOT NULL,
+    script_id INTEGER NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    UNIQUE(signal, script_id),
+    FOREIGN KEY(script_id) REFERENCES scripts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_hooks_signal
+    ON signal_hooks(signal);
 """
 
 class Database:

@@ -495,3 +495,77 @@ def hook_remove(db_path, hook_id):
     if n == 0:
         raise click.ClickException(f"Hook {hook_id} not found")
     click.echo(f"Removed hook {hook_id}")
+
+@cli.group("daemon-hook")
+def daemon_hook():
+    """Manage daemon lifecycle hooks."""
+    pass
+
+@daemon_hook.command("add")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--on", "event", type=click.Choice(["start", "stop", "reload"]), required=True)
+@click.option("--script-id", type=int, required=True)
+def daemon_hook_add(db_path, event, script_id):
+    db = Database(db_path); db.init()
+    from .daemon_hooks_repo import add_daemon_hook
+    add_daemon_hook(db, event=event, script_id=script_id)
+    click.echo(f"Added daemon hook: {event} -> script {script_id}")
+
+@daemon_hook.command("list")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def daemon_hook_list(db_path):
+    db = Database(db_path); db.init()
+    from .daemon_hooks_repo import list_daemon_hooks
+    rows = list_daemon_hooks(db)
+    if not rows:
+        click.echo("No daemon hooks."); return
+    click.echo("id\tevent\tscript_id\tscript")
+    for r in rows:
+        click.echo(f"{r['id']}\t{r['event']}\t{r['script_id']}\t{r['script_name']}")
+
+@daemon_hook.command("remove")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.argument("hook_id", type=int)
+def daemon_hook_remove(db_path, hook_id):
+    db = Database(db_path); db.init()
+    from .daemon_hooks_repo import remove_daemon_hook
+    n = remove_daemon_hook(db, hook_id)
+    if n == 0: raise click.ClickException("Hook not found")
+    click.echo(f"Removed daemon hook {hook_id}")
+
+@cli.group("signal-hook")
+def signal_hook():
+    """Manage signal hooks."""
+    pass
+
+@signal_hook.command("add")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--signal", "sig", type=click.Choice(["INT","TERM","HUP","USR1","USR2"]), required=True)
+@click.option("--script-id", type=int, required=True)
+def signal_hook_add(db_path, sig, script_id):
+    db = Database(db_path); db.init()
+    from .signal_hooks_repo import add_signal_hook
+    add_signal_hook(db, sig=sig, script_id=script_id)
+    click.echo(f"Added signal hook: {sig} -> script {script_id}")
+
+@signal_hook.command("list")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def signal_hook_list(db_path):
+    db = Database(db_path); db.init()
+    from .signal_hooks_repo import list_signal_hooks
+    rows = list_signal_hooks(db)
+    if not rows:
+        click.echo("No signal hooks."); return
+    click.echo("id\tsignal\tscript_id\tscript")
+    for r in rows:
+        click.echo(f"{r['id']}\t{r['signal']}\t{r['script_id']}\t{r['script_name']}")
+
+@signal_hook.command("remove")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.argument("hook_id", type=int)
+def signal_hook_remove(db_path, hook_id):
+    db = Database(db_path); db.init()
+    from .signal_hooks_repo import remove_signal_hook
+    n = remove_signal_hook(db, hook_id)
+    if n == 0: raise click.ClickException("Hook not found")
+    click.echo(f"Removed signal hook {hook_id}")
