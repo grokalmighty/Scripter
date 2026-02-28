@@ -45,8 +45,6 @@ class AppWatchSource(TriggerSource):
     def poll(self, db: Database) -> List[TriggerEvent]:
         triggers = list_app_triggers(db)
         running = _running_process_names()
-        print("APPWATCH:", "triggers=", [(t.process_name, t.on_event, t.script_id) for t in triggers])
-        print("APPWATCH:", "safari_running=", ("safari" in running))
         if not triggers:
             return []
 

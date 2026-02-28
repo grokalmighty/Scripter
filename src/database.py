@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS scripts (
     command TEXT NOT NULL,
     working_dir TEXT,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    concurrency_policy TEXT NOT NULL DEFAULT 'allow'
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -143,6 +144,12 @@ CREATE TABLE IF NOT EXISTS pending_events (
     FOREIGN KEY(script_id) REFERENCES scripts(id)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS ux_pending_waiting_queue_one
+ON pending_events(script_id)
+WHERE queue_tag='queue_one'
+  AND processed_at_utc IS NULL
+  AND claimed_at_utc IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_pending_events_ready
     ON pending_events(processed_at_utc, claimed_at_utc, id);
 
@@ -182,6 +189,13 @@ CREATE TABLE IF NOT EXISTS app_triggers (
 
 CREATE INDEX IF NOT EXISTS idx_app_triggers_lookup
     ON app_triggers(process_name, on_event);
+    
+CREATE TABLE IF NOT EXISTS daemon_lock (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    owner TEXT NOT NULL,
+    pid INTEGER NOT NULL,
+    acquired_at_utc TEXT NOT NULL
+);
 """
 
 class Database:
@@ -192,69 +206,64 @@ class Database:
     def connect(self) -> sqlite3.Connection:
         if self._conn is None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self._conn = sqlite3.connect(self.path)
-            self._conn.row_factory = sqlite3.Row
+            conn = sqlite3.connect(self.path, timeout=5.0)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON;")
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            # Recommended for multi-connection/multi-process durability & less locking pain
+            conn.execute("PRAGMA journal_mode = WAL;")
+            self._conn = conn
         return self._conn
-    
+
     def init(self) -> None:
         conn = self.connect()
-        conn = sqlite3.connect(self.path, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA busy_timeout = 5000;")
         conn.executescript(SCHEMA)
         conn.commit()
         self.migrate()
 
     def execute(self, sql: str, params: Iterable[Any] = ()) -> sqlite3.Cursor:
         conn = self.connect()
-        conn = sqlite3.connect(self.path, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA busy_timeout = 5000;")
         cur = conn.execute(sql, tuple(params))
         conn.commit()
         return cur
 
     def query(self, sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
         conn = self.connect()
-        conn = sqlite3.connect(self.path, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA busy_timeout = 5000;")
         cur = conn.execute(sql, tuple(params))
         return list(cur.fetchall())
 
-    def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
-    
+    def execute_returning(self, sql: str, params: Sequence[Any] = ()) -> list[sqlite3.Row]:
+        conn = self.connect()
+        cur = conn.execute(sql, params)
+        rows = cur.fetchall()
+        conn.commit()
+        return rows
+
     def migrate(self) -> None:
         conn = self.connect()
-        conn = sqlite3.connect(self.path, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA busy_timeout = 5000;")
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(runs)").fetchall()]
         if "trigger" not in cols:
             conn.execute("ALTER TABLE runs ADD COLUMN trigger TEXT")
-            conn.commit()
 
         s_cols = [r["name"] for r in conn.execute("PRAGMA table_info(schedules)").fetchall()]
         if "cron" not in s_cols:
             conn.execute("ALTER TABLE schedules ADD COLUMN cron TEXT")
         if "tz" not in s_cols:
             conn.execute("ALTER TABLE schedules ADD COLUMN tz TEXT")
+
+        p_cols = [r["name"] for r in conn.execute("PRAGMA table_info(pending_events)").fetchall()]
+        if "queue_tag" not in p_cols:
+            conn.execute("ALTER TABLE pending_events ADD COLUMN queue_tag TEXT")
+        conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_pending_waiting_queue_one
+        ON pending_events(script_id)
+        WHERE queue_tag='queue_one'
+        AND processed_at_utc IS NULL
+        AND claimed_at_utc IS NULL;
+        """)
         conn.commit()
-    
-    def execute_returning(self, sql: str, params: Sequence[Any] = ()) -> list[sqlite3.Row]:
-        """
-        Execute a statement that uses RETURNING and fetch all rows BEFORE committing.
-        Prevents: SQL statements in progress
-        """
-        conn = self.connect()
-        cur = conn.execute(sql, params)
-        rows = cur.fetchall()
-        conn.commit()
-        return rows 
+
+    def close(self) -> None:
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None

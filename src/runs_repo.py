@@ -9,7 +9,6 @@ def _now_iso() -> str:
 
 def create_run(db: Database, script_id: int, trigger: str | None = None) -> int:
     db.init()
-    db.migrate()
     cur = db.execute(
         """
         INSERT INTO runs (script_id, status, started_at, trigger)
@@ -38,7 +37,6 @@ def finish_run(
 
 def list_runs(db: Database, limit: int = 20, script_id: Optional[int] = None):
     db.init()
-    db.migrate()
     if script_id is None:
         return db.query(
             "SELECT * FROM runs ORDER BY id DESC LIMIT ?",
@@ -51,6 +49,28 @@ def list_runs(db: Database, limit: int = 20, script_id: Optional[int] = None):
 
 def get_run(db: Database, run_id: int):
     db.init()
-    db.migrate()
     rows = db.query("SELECT * FROM runs WHERE id = ?", (run_id,))
     return rows[0] if rows else None
+
+def is_script_running(db: Database, script_id: int) -> bool:
+    rows = db.query(
+        """
+        SELECT 1 FROM runs
+        WHERE script_id = ?
+        AND status = 'running'
+        LIMIT 1
+        """,
+        (script_id,),
+    )
+    return bool(rows)
+
+def has_pending_event(db: Database, script_id: int) -> bool:
+    rows = db.query(
+        """
+        SELECT 1 FROM pending_events
+        WHERE script_id = ?
+        LIMIT 1
+        """,
+        (script_id,),
+    )
+    return bool(rows)

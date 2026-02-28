@@ -31,3 +31,10 @@ def get_script(db: Database, script_id: int) -> Optional[Script]:
     if not rows:
         return None
     return Script(**dict(rows[0]))
+
+def set_concurrency_policy(db: Database, script_id: int, policy: str) -> int:
+    cur = db.execute(
+        "UPDATE scripts SET concurrency_policy = ? WHERE id = ?",
+        (policy, script_id),
+    )
+    return int(cur.rowcount)

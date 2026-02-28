@@ -17,6 +17,8 @@ from .webhooks_repo import add_webhook, list_webhooks, remove_webhook
 from .webhook_server import serve as serve_webhooks
 from .config_export import export_config
 from .event_bus_repo import publish_event, subscribe, list_events, list_subscriptions
+from .runs_repo import is_script_running
+from .pending_events_repo import enqueue_queue_one
 
 @click.group()
 def cli():
@@ -34,12 +36,26 @@ def version():
 def run_cmd(db_path, script_id):
     db = Database(db_path)
     db.init()
-    from .locks import owner_id
-    from .triggers.base import TriggerEvent
-    from .run_service import execute_event
 
-    execute_event(db, TriggerEvent(trigger_id="manual", script_id=script_id), owner_id())
-    click.echo(f"Triggered script {script_id} (manual)")
+    from .scripts_repo import get_script
+    from .pending_events_repo import enqueue_event, enqueue_queue_one
+
+    s = get_script(db, script_id)
+    if s is None:
+        raise click.ClickException(f"Script {script_id} not found")
+
+    policy = getattr(s, "concurrency_policy", "allow") or "allow"
+
+    if policy == "queue_one":
+        new_id = enqueue_event(db, "manual", script_id, {"manual": True})
+        if new_id is None:
+            click.echo("Dropped (queue_one): already has one queued")
+            return
+        click.echo(f"Queued script {script_id} (manual)")
+        return
+
+    enqueue_event(db, "manual", script_id, {"manual": True})
+    click.echo(f"Queued script {script_id} (manual)")
 
 @cli.group()
 def script():
@@ -609,3 +625,13 @@ def app_trigger_remove(db_path, trigger_id):
     if n == 0:
         raise click.ClickException("Trigger not found")
     click.echo(f"Removed app trigger {trigger_id}")
+
+@script.command("set-policy")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--id", "script_id", type=int, required=True)
+@click.option("--policy", type=click.Choice(["allow", "skip", "queue_one"]), required=True)
+def script_set_policy(db_path, script_id, policy):
+    db = Database(db_path); db.init()
+    from .scripts_repo import set_concurrency_policy
+    set_concurrency_policy(db, script_id=script_id, policy=policy)
+    click.echo(f"Set script {script_id} concurrency_policy={policy}")

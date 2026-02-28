@@ -9,4 +9,4 @@ class Script(BaseModel):
     working_dir: Optional[str] = None
     created_at: str
     updated_at: str
-    
+    concurrency_policy: str = "allow"
