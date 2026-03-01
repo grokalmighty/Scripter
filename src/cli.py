@@ -635,3 +635,94 @@ def script_set_policy(db_path, script_id, policy):
     from .scripts_repo import set_concurrency_policy
     set_concurrency_policy(db, script_id=script_id, policy=policy)
     click.echo(f"Set script {script_id} concurrency_policy={policy}")
+
+@cli.group("dctl")
+def dctl():
+    """Daemon control _ status"""
+    pass
+
+@dctl.command("status")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def dctl_status(db_path):
+    db = Database(db_path); db.init()
+    from .daemon_lock_repo import get_daemon_lock
+    lock = get_daemon_lock(db)
+    if not lock:
+        click.echo("daemon: not runnnig")
+        return
+    click.echo(f"daemon: running")
+    click.echo(f"owner: {lock['owner']}")
+    click.echo(f"pid: {lock['pid']}")
+    click.echo(f"acquired_at_utc: {lock['acquired_at_utc']}")
+
+@dctl.command("unlock")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--force", is_flag=True, help="Clear daemon lock row unconditionally")
+def dctl_unlock(db_path, force):
+    if not force:
+        raise click.ClickException("Refusing to unlock without --force")
+    db = Database(db_path); db.init()
+    from .daemon_lock_repo import force_clear_daemon_lock
+    n = force_clear_daemon_lock(db)
+    click.echo("cleared" if n else "no lock to clear")
+
+@cli.group("pending")
+def pending():
+    """Inspect and manage the pending queue."""
+    pass
+
+@pending.command("stats")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--script-id", type=int, default=None)
+def penidng_stats_cmd(db_path, script_id):
+    db = Database(db_path); db.init()
+    from .pending_events_repo import pending_stats
+    s = pending_stats(db, script_id=script_id)
+    click.echo(f"inflight={s['inflight']} waiting{s['waiting']} processed={s['processed']}")
+
+@pending.command("list")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--script-id", type=int, default=None)
+@click.option("--limit", type=int, default=30)
+def pending_list_cmd(db_path, script_id, limit):
+    db = Database(db_path); db.init()
+    from .pending_events_repo import list_pending
+    rows = list_pending(db, script_id=script_id, limit=limit)
+    if not rows:
+        click.echo("No pending events.")
+        return
+    click.echo("id\tscript\ttrigger\tqueue_tag\tcreated\tclaimed\tprocessed")
+    for r in rows:
+        click.echo(
+            f"{r['id']}\t{r['script_id']}\t{r['trigger_id']}\t{r.get('queue_tag') or ''}\t"
+            f"{r.get('created_at_utc') or ''}\t{r.get('claimed_at_utc') or ''}\t{r.get('processed_at_utc') or ''}"
+        )
+
+@pending.command("clear")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--script-id", type=int, default=None)
+def pending_clear_cmd(db_path, script_id):
+    db = Database(db_path); db.init()
+    from .pending_events_repo import clear_pending
+    n = clear_pending(db, script_id=script_id)
+    click.echo(f"Cleared {n} pending events.")
+
+@cli.command("status")
+@click.option("--db", "db_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def status_cmd(db_path):
+    db = Database(db_path); db.init()
+    from .scripts_repo import list_scripts
+    from .pending_events_repo import pending_stats
+    from .runs_repo import is_script_running
+
+    scripts = list_scripts(db)
+    if not scripts:
+        click.echo("No scripts.")
+        return
+    
+    click.echo("id\tname\tpolicy\trunning\tinflight\twaiting")
+    for s in scripts:
+        stats = pending_stats(db, script_id=s.id)
+        running = "1" if is_script_running(db, s.id) else "0"
+        policy = getattr(s, "concurrency_policy", "allow") or "allow"
+        click.echo(f"{s.id}\t{s.name}\t{policy}\t{running}\t{stats['inflight']}\t{stats['waiting']}")

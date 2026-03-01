@@ -230,3 +230,60 @@ def enqueue_queue_one(db, trigger_id: str, script_id: int, payload: Optional[Dic
     except sqlite3.IntegrityError:
         # unique index says: already has one waiting queue_one row
         return None
+    
+def pending_stats(db: Database, script_id: Optional[int] = None) -> Dict[str, int]:
+    if script_id is None:
+        rows = db.query(
+            """
+            SELECT
+                SUM(claimed_at_utc IS NOT NULL AND processed_at_utc IS NULL) AS inflight,
+                SUM(claimed_at_utc IS NULL AND processed_at_utc IS NULL) AS waiting,
+                SUM(processed_at_utc IS NOT NULL) AS processed
+            FROM pending_events
+            """
+        )
+    else:
+        rows = db.query(
+            """
+            SELECT 
+                SUM(claimed_at_utc IS NOT NULL AND processed_at_utc IS NULL) AS inflight,
+                SUM(claimed_at_utc IS NULL AND processed_at_utc IS NULL) AS waiting,
+                SUM(processed_at_utc IS NOT NULL) AS processed
+            FROM pending_events
+            WHERE script_id = ?
+            """,
+            (script_id,),
+        )
+    r = dict(rows[0]) if rows else {}
+    return {k: int(r.get(k) or 0) for k in ("inflight", "waiting", "processed")}
+
+def list_pending(db: Database, script_id: Optional[int] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    if script_id is None:
+        rows = db.query(
+            """
+            SELECT id, trigger_id, script_id, queue_tag, created_at_utc, claimed_at_utc, claimed_by, processed_at_utc
+            FROM pending_events
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+    else:
+        rows = db.query(
+            """
+            SELECT id, trigger_id, script_id, queue_tag, created_at_utc, claimed_at_utc, claimed_by, processed_at_utc
+            FROM pending_events
+            WHERE script_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (script_id, limit,),
+        )
+    return [dict(r) for r in rows]
+
+def clear_pending(db: Database, script_id: Optional[int] = None) -> int:
+    if script_id is None:
+        cur = db.execute("DELETE FROM pending_events")
+    else:
+        cur = db.execute("DELETE FROM pending_events WHERE script_id = ?", (script_id,))
+    return int(cur.rowcount)
